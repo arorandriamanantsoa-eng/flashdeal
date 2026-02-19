@@ -1,94 +1,335 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const fs = require('fs');
-const path = require('path');
-const app = express();
+var express = require('express');
+var mongoose = require('mongoose');
+var http = require('http');
+var socketIo = require('socket.io');
+var bodyParser = require('body-parser');
+var cors = require('cors');
+var path = require('path');
 
+var app = express();
+var server = http.createServer(app);
+var io = socketIo(server);
+
+app.use(cors());
 app.use(bodyParser.json());
+app.use('/photos', express.static(path.join(__dirname, 'photos')));
 
-// --- CONFIGURATION DU DISQUE POUR RENDER ---
-// On utilise /data si le disque est présent, sinon le dossier local
-const DB_DIR = '/data';
-const DB_FILE = path.join(DB_DIR, 'database.json');
+mongoose.connect('mongodb://localhost:27017/madamarket_v6', { useMongoClient: true });
+mongoose.Promise = global.Promise;
 
-// Création automatique du dossier et du fichier si absent
-if (!fs.existsSync(DB_DIR)) {
-    // Si on n'est pas sur Render avec un disque, on utilise le dossier local
-    var localFile = './database.json';
-    if (!fs.existsSync(localFile)) {
-        fs.writeFileSync(localFile, JSON.stringify({p:[], v:[], m:[]}));
-    }
-    var current_db = localFile;
-} else {
-    if (!fs.existsSync(DB_FILE)) {
-        fs.writeFileSync(DB_FILE, JSON.stringify({p:[], v:[], m:[]}));
-    }
-    var current_db = DB_FILE;
-}
-
-// --- API DE SYNCHRONISATION ---
-app.get('/api/sync', function(req, res) {
-    res.setHeader('Cache-Control', 'no-cache');
-    var data = fs.readFileSync(current_db, 'utf8');
-    res.send(data);
+// --- SCHEMAS ---
+var User = mongoose.model('User', { 
+    username: { type: String, unique: true }, 
+    password: { type: String, required: true },
+    role: String, entreprise: String, payNum: String 
 });
 
-app.post('/api/action', function(req, res) {
-    var db = JSON.parse(fs.readFileSync(current_db, 'utf8'));
-    if(req.body.type === 'add') db.p.push(req.body.data);
-    if(req.body.type === 'buy') db.v.push(req.body.data);
-    if(req.body.type === 'msg') db.m.push(req.body.data);
-    fs.writeFileSync(current_db, JSON.stringify(db, null, 2));
-    res.json({ s: true });
+var Product = mongoose.model('Product', { 
+    name: String, price: Number, qty: Number, image: String, vendor: String, vendorId: String 
 });
 
-// --- PAGE ADMIN SECRÈTE (/admin) ---
-app.get('/admin', function(req, res) {
-    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ADMIN - flashdeal</title>';
-    html += '<style>body{background:#080808;color:#e0e0e0;font-family:"Segoe UI",sans-serif;margin:0;padding:40px;} h1{color:#d4af37;text-shadow:0 0 10px rgba(212,175,55,0.3);} .box{background:rgba(255,255,255,0.03);padding:20px;border-radius:15px;border:1px solid rgba(212,175,55,0.2);margin-bottom:25px;backdrop-filter:blur(10px);} input{width:100%;padding:12px;margin:8px 0;background:#000;color:white;border:1px solid #333;border-radius:8px;transition:0.3s;} input:focus{border-color:#d4af37;outline:none;box-shadow:0 0 8px rgba(212,175,55,0.2);} .btn{background:linear-gradient(135deg,#d4af37,#b8952e);color:black;padding:12px;width:100%;border:none;font-weight:bold;border-radius:8px;cursor:pointer;text-transform:uppercase;transition:0.3s;} .btn:hover{transform:translateY(-2px);box-shadow:0 5px 15px rgba(212,175,55,0.4);} .chat{height:180px;overflow-y:auto;background:#050505;padding:15px;border-radius:10px;border:1px solid #222;margin-bottom:10px;font-size:13px;}</style></head><body>';
-    html += '<h1>🔱 PANNEAU DE CONTRÔLE - FLASH DEAL</h1>';
-    html += '<div class="box"><h3>📦 AJOUTER UN PRODUIT</h3><input id="n" placeholder="Nom du produit"><input id="p" type="number" placeholder="Prix (MGA)"><input id="i" placeholder="URL Image (Optionnel)"><button class="btn" onclick="addP()">Mettre en ligne</button></div>';
-    html += '<div class="box" style="background:rgba(212,175,55,0.1);border:1px solid #d4af37;color:#d4af37;text-align:center;"><b>CHIFFRE D\'AFFAIRES TOTAL: <span id="ca" style="font-size:24px;">0</span> MGA</b></div>';
-    html += '<div class="box"><h3>📊 VENTES RÉCENTES</h3><div id="v-list"></div></div>';
-    html += '<div class="box"><h3>💬 CENTRE DE MESSAGERIE</h3><div id="chat-admin" class="chat"></div><input id="m-admin" placeholder="Écrire une réponse..." onkeypress="if(event.key===\'Enter\')sendM()"></div>';
-    html += '<script>';
-    html += 'function sync(){ fetch("/api/sync?t="+Date.now()).then(r=>r.json()).then(db=>{';
-    html += 'var tot=0; var vh=""; db.v.forEach(v=>{ tot+=parseInt(v.p||0); vh+="<div style=\'border-bottom:1px solid #222;padding:10px;display:flex;justify-content:space-between;align-items:center;\'><span><b>"+v.n+"</b> - "+v.p+" MGA</span> <button class=\'btn\' style=\'width:auto;padding:5px 15px;font-size:11px;\' onclick=\'fact(\\""+v.n+"\\","+v.p+",\\""+v.a+"\\")\'>FACTURE</button></div>"; });';
-    html += 'document.getElementById("ca").innerText=tot.toLocaleString(); document.getElementById("v-list").innerHTML=vh;';
-    html += 'var mh=""; db.m.forEach(m=>{ mh+="<div style=\'margin-bottom:8px;\'><b style=\'color:#d4af37\'>"+m.u+":</b> "+m.t+"</div>"; }); document.getElementById("chat-admin").innerHTML=mh; document.getElementById("chat-admin").scrollTop=9999;';
-    html += '});}';
-    html += 'function addP(){ var n=document.getElementById("n").value,p=document.getElementById("p").value,i=document.getElementById("i").value; if(!n||!p)return; fetch("/api/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"add",data:{n:n,p:p,i:i}})}).then(()=>{document.getElementById("n").value="";document.getElementById("p").value="";sync();}); }';
-    html += 'function sendM(){ var m=document.getElementById("m-admin").value; if(!m)return; fetch("/api/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"msg",data:{u:"ADMIN",t:m}})}).then(()=>{document.getElementById("m-admin").value="";sync();}); }';
-    html += 'function fact(n,p,a){ var w=window.open("",""); w.document.write("<html><body style=\'padding:40px;font-family:sans-serif;background:#f9f9f9;\'><div style=\'background:white;padding:30px;border-radius:10px;box-shadow:0 0 20px rgba(0,0,0,0.1);border-top:10px solid #d4af37;\'><h1>FLASH DEAL</h1><hr><h2>FACTURE CLIENT</h2><p><b>PRODUIT:</b> "+n+"</p><p><b>PRIX:</b> "+p+" MGA</p><p><b>LIVRAISON:</b> "+a+"</p><p><b>DATE:</b> "+new Date().toLocaleString()+"</p><hr><button onclick=\'window.print()\' style=\'padding:10px 20px;background:#d4af37;border:none;color:white;cursor:pointer;font-weight:bold;border-radius:5px;\'>IMPRIMER LA FACTURE</button></div></body></html>"); }';
-    html += 'setInterval(sync,3000); sync(); </script></body></html>';
-    res.send(html);
+var Sale = mongoose.model('Sale', { 
+    saleCode: String, vendorId: String, total: Number, productName: String, 
+    clientName: String, address: String, payMethod: String,
+    deliveryDate: String, deliveryTime: String, deliveryPhone: String,
+    date: { type: Date, default: Date.now } 
 });
 
-// --- PAGE BOUTIQUE CLIENT (/) ---
+// --- TCHAT ---
+io.on('connection', function(socket) {
+    socket.on('send_msg', function(data) { io.emit('receive_msg', data); });
+});
+
+// --- API ---
+app.post('/api/register', function(req, res) {
+    new User(req.body).save().then(function(u){ res.json(u); }).catch(function(){ res.status(400).send("Erreur"); });
+});
+
+app.post('/api/login', function(req, res) {
+    User.findOne({ username: req.body.username, password: req.body.password }).then(function(u) {
+        if(u) res.json(u); else res.status(401).send("Erreur");
+    });
+});
+
+app.get('/api/products', function(req, res) {
+    Product.find({}).then(function(p){ res.json(p); });
+});
+
+app.post('/api/products', function(req, res) {
+    new Product(req.body).save().then(function(p){ res.json(p); });
+});
+
+app.delete('/api/products/:id', function(req, res) {
+    Product.remove({ _id: req.params.id }).then(function(){ res.json({ok:true}); });
+});
+
+app.get('/api/admin/dashboard/:id', function(req, res) {
+    Sale.find({ vendorId: req.params.id }).sort({date: -1}).then(function(sales) {
+        var total = 0; sales.forEach(function(s){ total += s.total; });
+        res.json({ total: total, history: sales });
+    });
+});
+
+app.post('/api/checkout', function(req, res) {
+    var data = req.body;
+    data.saleCode = 'INV-' + Math.floor(100000 + Math.random() * 899999);
+    Product.update({ _id: data.productId }, { $inc: { qty: -1 } }).then(function(){
+        new Sale(data).save().then(function(s){ res.json(s); });
+    });
+});
+
+// --- INTERFACE ---
 app.get('/', function(req, res) {
-    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>FLASH DEAL - LUXE</title>';
-    html += '<style>body{background:#050505;color:white;font-family:"Poppins",sans-serif;margin:0;padding:40px;background-image:radial-gradient(circle at top right, #1a1a1a, #050505);} .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));gap:30px;padding-top:20px;} .card{background:rgba(255,255,255,0.03);padding:0;border-radius:20px;text-align:center;border:1px solid rgba(255,255,255,0.08);overflow:hidden;transition:0.4s;backdrop-filter:blur(10px);} .card:hover{transform:translateY(-10px);border-color:#d4af37;box-shadow:0 10px 30px rgba(212,175,55,0.15);} img{width:100%;height:200px;object-fit:cover;transition:0.5s;} .card:hover img{scale:1.1;} .card-info{padding:20px;} .btn{background:#d4af37;color:black;padding:12px;width:100%;border:none;font-weight:bold;cursor:pointer;border-radius:12px;transition:0.3s;text-transform:uppercase;letter-spacing:1px;} .btn:hover{background:#fff;box-shadow:0 5px 15px rgba(255,255,255,0.2);} .search{width:100%;padding:18px;margin-bottom:30px;background:rgba(255,255,255,0.05);border:1px solid rgba(212,175,55,0.3);color:white;font-size:18px;border-radius:15px;box-sizing:border-box;transition:0.3s;} .search:focus{outline:none;border-color:#d4af37;background:rgba(255,255,255,0.08);} .chat-client{position:fixed;bottom:25px;right:25px;width:320px;background:#111;border:1px solid #d4af37;padding:20px;border-radius:20px;box-shadow:0 15px 40px rgba(0,0,0,0.6);backdrop-filter:blur(10px);} #cc{height:120px;overflow-y:auto;font-size:13px;margin-bottom:15px;padding-right:5px;border-bottom:1px solid #222;} .chat-input-group{display:flex;gap:5px;} .chat-input-group input{background:#000;border:1px solid #333;color:white;padding:8px;border-radius:8px;} ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-thumb{background:#d4af37;border-radius:10px;}</style></head><body>';
-    html += '<h1 id="title" style="color:#d4af37;font-size:42px;margin-bottom:10px;letter-spacing:2px;text-align:center;">BIENVENUE CHEZ FLASH DEAL</h1>';
-    html += '<p style="text-align:center;color:#888;margin-bottom:40px;">Découvrez nos articles exclusifs</p>';
-    html += '<input id="search" class="search" placeholder="🔍 Rechercher un article d\'exception..." onkeyup="sync()">';
-    html += '<div id="list" class="grid"></div>';
-    html += '<div class="chat-client"><h4 style="margin-top:0;color:#d4af37;">✨ CONSEILLER EN LIGNE</h4><div id="cc"></div><div class="chat-input-group"><input id="un" placeholder="Nom" style="width:35%"><input id="um" placeholder="Message..." style="width:65%" onkeypress="if(event.key===\'Enter\')sendC()"></div></div>';
-    html += '<script>';
-    html += 'function fact(n,p,a){ var w=window.open("",""); w.document.write("<html><body style=\'padding:40px;font-family:sans-serif;background:#f9f9f9;\'><div style=\'background:white;padding:30px;border-radius:10px;box-shadow:0 0 20px rgba(0,0,0,0.1);border-top:10px solid #d4af37;\'><h1>FLASH DEAL SHOP</h1><hr><h2>FACTURE CLIENT</h2><p><b>PRODUIT:</b> "+n+"</p><p><b>PRIX:</b> "+p+" MGA</p><p><b>LIVRAISON:</b> "+a+"</p><p><b>DATE:</b> "+new Date().toLocaleString()+"</p><hr><button onclick=\'window.print()\' style=\'padding:10px 20px;background:#d4af37;border:none;color:white;cursor:pointer;font-weight:bold;border-radius:5px;\'>IMPRIMER LA FACTURE</button></div></body></html>"); }';
-    html += 'function sync(){ fetch("/api/sync?t="+Date.now()).then(r=>r.json()).then(db=>{';
-    html += 'var s=document.getElementById("search").value.toLowerCase(); var h="";';
-    html += 'db.p.forEach(p=>{ if(p.n.toLowerCase().indexOf(s)>-1){ h+="<div class=\'card\'><img src=\'"+(p.i||"https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500")+"\'><div class=\'card-info\'><h3>"+p.n+"</h3><p style=\'color:#d4af37;font-size:22px;font-weight:bold;\'>"+p.p+" MGA</p><button class=\'btn\' onclick=\'buy(\\""+p.n+"\\","+p.p+")\'>Acquérir</button></div></div>"; } });';
-    html += 'document.getElementById("list").innerHTML=h;';
-    html += 'var mh=""; db.m.forEach(m=>{ var isA = (m.u==="ADMIN"); mh+="<div style=\'margin-bottom:8px;text-align:"+(isA?"left":"right")+"\'><span style=\'background:"+(isA?"#d4af37":"#222") +";color:"+(isA?"black":"white")+";padding:4px 10px;border-radius:8px;display:inline-block;\'><b>"+m.u+":</b> "+m.t+"</span></div>"; }); document.getElementById("cc").innerHTML=mh; document.getElementById("cc").scrollTop=9999;';
-    html += '});}';
-    html += 'function buy(n,p){ var a=prompt("Indiquez votre adresse de livraison prestigieuse :"); if(a)fetch("/api/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"buy",data:{n:n,p:p,a:a}})}).then(()=>{alert("Demande d\'acquisition transmise ! Voici votre facture."); fact(n,p,a); }); }';
-    html += 'function sendC(){ var u=document.getElementById("un").value||"Client", m=document.getElementById("um").value; if(!m)return; fetch("/api/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"msg",data:{u:u,t:m}})}).then(()=>{document.getElementById("um").value="";sync();}); }';
-    html += 'setInterval(sync,3000); sync(); </script></body></html>';
-    res.send(html);
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MADA MARKET V6 - ULTIME</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.19.2/axios.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root { --gold: #d4af37; --dark: #0a0a0a; --card: #1a1a1a; --txt: #e0e0e0; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--dark); color: var(--txt); }
+        .nav { background: #000; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--gold); position: sticky; top:0; z-index:100; }
+        .container { max-width: 1100px; margin: auto; padding: 15px; }
+        .card { background: var(--card); border-radius: 10px; padding: 15px; border: 1px solid #333; margin-bottom: 15px; }
+        .input { width: 100%; padding: 12px; border: 1px solid #444; border-radius: 5px; margin: 5px 0; background: #222; color: white; box-sizing: border-box; }
+        .btn { background: var(--gold); color: black; border: none; padding: 12px; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold; }
+        .btn-refresh { background: #27ae60; color: white; margin-bottom: 15px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; }
+        .prod-card { background: var(--card); border-radius: 8px; border: 1px solid #333; overflow: hidden; }
+        .prod-card img { width: 100%; height: 150px; object-fit: cover; }
+        .overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); display:flex; align-items:center; justify-content:center; z-index:1000; padding:10px; }
+        .invoice-box { background: white; color: black; padding: 25px; width: 320px; font-family: monospace; border-radius: 5px; }
+        .chat-b { position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; background: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: black; cursor: pointer; z-index: 500; font-size: 24px; }
+        .chat-w { position: fixed; bottom: 80px; right: 20px; width: 300px; height: 400px; background: var(--card); border: 1px solid var(--gold); border-radius: 10px; display: flex; flex-direction: column; z-index: 500; overflow: hidden; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="nav">
+        <b style="color:var(--gold)">MADA MARKET ELITE V6</b>
+        <button v-if="user" @click="user=null" style="color:gray; background:none; border:none;">Sortir</button>
+    </div>
+
+    <div class="container">
+        <div v-if="!user" class="card" style="max-width:350px; margin: 50px auto">
+            <h2 style="text-align:center; color:var(--gold)">CONNEXION</h2>
+            <select v-if="isReg" v-model="form.role" class="input">
+                <option value="client">Client (Acheteur)</option>
+                <option value="admin">Admin (Vendeur)</option>
+            </select>
+            <input v-model="form.username" class="input" placeholder="Utilisateur">
+            <input v-model="form.password" type="password" class="input" placeholder="Mot de passe">
+            <div v-if="isReg && form.role=='admin'">
+                <input v-model="form.entreprise" class="input" placeholder="Nom Boutique">
+                <input v-model="form.payNum" class="input" placeholder="N° Mobile Money">
+            </div>
+            <button class="btn" @click="isReg ? register() : login()">{{ isReg ? 'Créer Compte' : 'Se Connecter' }}</button>
+            <p @click="isReg = !isReg" style="text-align:center; cursor:pointer; color:var(--gold); font-size:12px; margin-top:10px">Changer de mode</p>
+        </div>
+
+        <div v-if="user && user.role=='client'">
+            <div class="card" style="display:flex; gap:10px; flex-wrap:wrap">
+                <input v-model="search" class="input" style="flex:1; margin:0" placeholder="Rechercher un produit ou boutique...">
+                <select v-model="sortPrice" class="input" style="width:150px; margin:0">
+                    <option value="">Trier par prix</option>
+                    <option value="asc">Croissant</option>
+                    <option value="desc">Décroissant</option>
+                </select>
+                <button class="btn" style="width:auto" @click="refresh">🔄</button>
+            </div>
+            <div class="grid">
+                <div class="prod-card" v-for="p in filteredProducts">
+                    <img :src="p.image || 'https://via.placeholder.com/150'">
+                    <div style="padding:10px">
+                        <div style="color:var(--gold); font-size:11px; font-weight:bold; text-transform:uppercase">{{p.vendor}}</div>
+                        <div style="font-weight:bold; font-size:14px; margin:4px 0">{{p.name}}</div>
+                        <div style="color:#fff; font-size:16px; font-weight:900">{{p.price}} Ar</div>
+                        <button class="btn" style="padding:5px; margin-top:8px; font-size:12px" @click="openOrder(p)" :disabled="p.qty<=0">ACHETER</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="user && user.role=='admin'">
+            <div class="card" style="text-align:center; border: 2px solid var(--gold)">
+                <small>CHIFFRE D'AFFAIRES TOTAL</small>
+                <h1 style="color:var(--gold); margin:5px 0">{{stats.total}} Ar</h1>
+                <button class="btn btn-refresh" @click="refresh">ACTUALISER LES DONNÉES</button>
+            </div>
+
+            <div class="card">
+                <h3>Ajouter un Article</h3>
+                <input v-model="newP.name" class="input" placeholder="Nom produit">
+                <input v-model="newP.price" type="number" class="input" placeholder="Prix">
+                <input v-model="newP.qty" type="number" class="input" placeholder="Quantité">
+                <input v-model="newP.image" class="input" placeholder="Image URL / Chemin">
+                <button class="btn" @click="addProd">METTRE EN VENTE</button>
+            </div>
+
+            <div class="card">
+                <h3>📦 Mon Stock</h3>
+                <div v-for="p in products" v-if="p.vendorId == user._id" style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #333">
+                    <span>{{p.name}} (Stock: {{p.qty}})</span>
+                    <button class="btn" style="width:auto; background:red; padding:2px 8px; font-size:10px" @click="delProd(p._id)">SUPPRIMER</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📜 Historique & Factures Vendeur</h3>
+                <div v-for="s in stats.history" style="padding:10px; background:#111; margin-bottom:10px; border-radius:5px">
+                    <div style="display:flex; justify-content:space-between">
+                        <b>{{s.productName}}</b>
+                        <button @click="printInv(s)" style="background:none; border:1px solid var(--gold); color:var(--gold); font-size:10px; cursor:pointer">VOIR FACTURE</button>
+                    </div>
+                    <small>Client: {{s.clientName}} | Date: {{new Date(s.date).toLocaleDateString()}}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="order" class="overlay">
+        <div class="card" style="width:330px">
+            <h3 style="color:var(--gold)">INFOS LIVRAISON</h3>
+            <label><small>Date livraison souhaitée:</small></label>
+            <input v-model="delivery.date" type="date" class="input">
+            <label><small>Heure livraison souhaitée:</small></label>
+            <input v-model="delivery.time" type="time" class="input">
+            <input v-model="delivery.phone" class="input" placeholder="Téléphone pour livraison">
+            <input v-model="delivery.address" class="input" placeholder="Adresse précise">
+            <select v-model="payMethod" class="input">
+                <option value="Mobile Money">Mobile Money</option>
+                <option value="Cash">Paiement à la livraison</option>
+            </select>
+            <button class="btn" @click="confirmOrder">VALIDER LA COMMANDE</button>
+            <button @click="order=null" class="btn" style="background:gray; margin-top:5px">ANNULER</button>
+        </div>
+    </div>
+
+    <div v-if="invoice" class="overlay">
+        <div style="text-align:center">
+            <div id="facture" class="invoice-box">
+                <h2 style="margin:0">MADA MARKET</h2>
+                <small>Boutique: {{invoice.vendorName || user.entreprise}}</small>
+                <p>----------------------------</p>
+                <b>FACTURE #{{invoice.saleCode}}</b>
+                <p style="text-align:left; font-size:12px">
+                    Client: {{invoice.clientName}}<br>
+                    Article: {{invoice.productName}}<br>
+                    Date Liv: {{invoice.deliveryDate}}<br>
+                    Heure Liv: {{invoice.deliveryTime}}<br>
+                    Tél: {{invoice.deliveryPhone}}<br>
+                    Pay: {{invoice.payMethod}}
+                </p>
+                <p>----------------------------</p>
+                <h2 style="margin:10px 0">{{invoice.total}} Ar</h2>
+                <small>{{new Date(invoice.date).toLocaleString()}}</small>
+            </div>
+            <button class="btn" style="margin-top:10px" @click="downloadInv">TÉLÉCHARGER PNG</button>
+            <button class="btn" style="margin-top:5px; background:none; color:white" @click="invoice=null">FERMER</button>
+        </div>
+    </div>
+
+    <div v-if="user" class="chat-b" @click="showChat=!showChat">💬</div>
+    <div v-if="showChat" class="chat-w">
+        <div style="background:var(--gold); color:black; padding:10px; font-weight:bold">TCHAT SUPPORT</div>
+        <div id="chatbox" style="flex:1; padding:10px; overflow-y:auto; font-size:12px">
+            <div v-for="m in messages" :style="m.u == user.username ? 'text-align:right' : ''">
+                <div :style="m.u == user.username ? 'background:var(--gold); color:black; padding:5px; border-radius:5px; display:inline-block; margin:2px' : 'background:#333; padding:5px; border-radius:5px; display:inline-block; margin:2px'">
+                    <b>{{m.u}}:</b> {{m.t}}
+                </div>
+            </div>
+        </div>
+        <input v-model="msg" @keyup.enter="sendMsg" class="input" style="border-radius:0" placeholder="Message...">
+    </div>
+</div>
+
+<script>
+    var socket = io();
+    new Vue({
+        el: '#app',
+        data: {
+            user: null, isReg: false, products: [], stats: {total:0, history:[]},
+            form: {username:'', password:'', role:'client', entreprise:'', payNum:''},
+            newP: {name:'', price:0, qty:0, image:''},
+            order: null, invoice: null, payMethod: 'Mobile Money', search: '', sortPrice: '',
+            delivery: {date:'', time:'', address:'', phone:''},
+            showChat: false, messages: [], msg: ''
+        },
+        computed: {
+            filteredProducts: function() {
+                var self = this;
+                var list = this.products.filter(function(p){
+                    return p.name.toLowerCase().includes(self.search.toLowerCase()) || p.vendor.toLowerCase().includes(self.search.toLowerCase());
+                });
+                if(this.sortPrice === 'asc') list.sort((a,b) => a.price - b.price);
+                if(this.sortPrice === 'desc') list.sort((a,b) => b.price - a.price);
+                return list;
+            }
+        },
+        methods: {
+            login: function() { 
+                var self = this;
+                axios.post('/api/login', this.form).then(function(r){ self.user = r.data; self.refresh(); });
+            },
+            register: function() { 
+                var self = this;
+                axios.post('/api/register', this.form).then(function(r){ self.user = r.data; self.refresh(); });
+            },
+            refresh: function() {
+                var self = this;
+                axios.get('/api/products').then(function(r){ self.products = r.data; });
+                if(this.user && this.user.role=='admin') axios.get('/api/admin/dashboard/'+this.user._id).then(function(r){ self.stats = r.data; });
+            },
+            addProd: function() {
+                var p = {...this.newP, vendor: this.user.entreprise, vendorId: this.user._id};
+                axios.post('/api/products', p).then(() => { this.refresh(); this.newP={name:'',price:0,qty:0,image:''}; });
+            },
+            delProd: function(id) {
+                if(confirm("Supprimer ?")) axios.delete('/api/products/'+id).then(() => this.refresh());
+            },
+            openOrder: function(p) { this.order = p; },
+            confirmOrder: function() {
+                var self = this;
+                var d = {
+                    productId: this.order._id, vendorId: this.order.vendorId, total: this.order.price, 
+                    productName: this.order.name, clientName: this.user.username, payMethod: this.payMethod,
+                    deliveryDate: this.delivery.date, deliveryTime: this.delivery.time, 
+                    deliveryPhone: this.delivery.phone, address: this.delivery.address
+                };
+                axios.post('/api/checkout', d).then(function(r){ 
+                    self.invoice = r.data; self.order = null; self.refresh(); 
+                });
+            },
+            printInv: function(s) { this.invoice = s; },
+            downloadInv: function() {
+                html2canvas(document.querySelector("#facture")).then(canvas => {
+                    var link = document.createElement('a'); link.download = 'Facture_MadaMarket.png';
+                    link.href = canvas.toDataURL(); link.click();
+                });
+            },
+            sendMsg: function() {
+                if(this.msg) socket.emit('send_msg', {u: this.user.username, t: this.msg});
+                this.msg = '';
+            }
+        },
+        mounted: function() {
+            var self = this;
+            socket.on('receive_msg', function(d){ 
+                self.messages.push(d);
+                setTimeout(() => { var b = document.getElementById("chatbox"); if(b) b.scrollTop = b.scrollHeight; }, 100);
+            });
+        }
+    });
+</script>
+</body>
+</html>
+    `);
 });
 
-// --- ÉCOUTE DU PORT DYNAMIQUE (FIX POUR L'ERREUR 254) ---
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => { 
-    console.log("Serveur FLASHDEAL en ligne sur le port " + PORT); 
-});
+server.listen(3001, function() { console.log("🚀 MADA MARKET V6 ULTIME SUR PORT 3001"); });

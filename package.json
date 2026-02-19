@@ -1,9 +1,16 @@
 {
-  "name": "flashdeal",
-  "version": "1.0.0",
+  "name": "mada-market-ultime",
+  "version": "6.0.0",
+  "description": "Plateforme de vente Elite Madagascar",
   "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
-    "express": "^4.18.2",
-    "body-parser": "^1.20.2"
+    "express": "^4.16.0",
+    "mongoose": "^4.13.0",
+    "socket.io": "^2.1.1",
+    "body-parser": "^1.18.3",
+    "cors": "^2.8.5"
   }
 }

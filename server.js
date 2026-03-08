@@ -192,6 +192,7 @@ app.get('/', function(req, res) {
     res.send(`<!DOCTYPE html>
     <html>
     <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta charset="UTF-8">
         <title>⚡ FLASHDEAL EMPIRE</title>
         <script src="https://cdn.jsdelivr.net/npm/vue@2.5.17/dist/vue.js"></script>
@@ -302,6 +303,55 @@ app.get('/', function(req, res) {
         .sidebar h2, .sidebar p, .sidebar span { display: none; }
         .main { margin-left: 70px; width: calc(100% - 70px); }
         .big-btn { width: 90%; }
+    }
+    /* --- BLOC ADAPTATIF : NE MODIFIE PAS LE RESTE --- */
+@media (max-width: 800px) {
+    .sidebar { 
+        width: 100%; 
+        height: auto; 
+        position: relative; 
+        border-right: none; 
+        border-bottom: 3px solid var(--p); 
+        display: flex; 
+        flex-wrap: wrap; 
+        justify-content: center; 
+        padding: 10px;
+        backdrop-filter: blur(10px);
+    }
+    .sidebar > div { 
+        margin-bottom: 10px; 
+        width: 100%; 
+        display: flex;
+        justify-content: center; 
+    }
+    .sidebar .btn { 
+        width: auto; 
+        flex: 1; 
+        margin: 2px; 
+        font-size: 0.7rem; 
+        padding: 10px 5px; 
+        min-width: 80px;
+    }
+    .main { 
+        margin-left: 0; 
+        width: 100%; 
+        padding: 15px; 
+    }
+    .grid { 
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
+        gap: 10px; 
+    }
+    .big-btn { 
+        min-width: 95%; 
+        margin: 10px 0;
+    }
+    .cart-panel { 
+        width: 100% !important; 
+        border-left: none !important; 
+    }
+    .splash-logo-container img {
+        width: 80%;
+            }
     }
         </style>
     </head>

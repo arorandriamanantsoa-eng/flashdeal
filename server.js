@@ -8,6 +8,13 @@ var request = require('request');
 var DB_FILE = 'database.json'; // Changé en .json pour éviter les bugs
 var app = express();
 
+// --- AJOUT : GÉNÉRATEUR D'ID UNIQUE ROBUSTE (NODE V6) ---
+// Combine le préfixe, le temps exact et une chaîne mathématique aléatoire
+function generateUniqueId(prefix) {
+    var randomStr = Math.random().toString(36).substr(2, 9);
+    return prefix + "_" + Date.now() + "_" + randomStr;
+}
+
 // --- 2. DÉFINITION DES FONCTIONS DE LECTURE (DOIVENT ÊTRE EN HAUT) ---
 function read() { 
     try {
@@ -60,7 +67,9 @@ app.post('/api/signup', function(req, res) {
     if (db.users.find(function(u) { return u.user === req.body.user; })) {
         return res.json({ success: false });
     }
-    var newUser = Object.assign({}, req.body, { id: "U" + Date.now() });
+    // --- AJOUT : Utilisation du générateur d'ID unique ---
+    var uniqueId = generateUniqueId("USER");
+    var newUser = Object.assign({}, req.body, { id: uniqueId });
     db.users.push(newUser); 
     save(db);
     res.json({ success: true, user: newUser });
@@ -87,16 +96,16 @@ app.post('/api/action', function(req, res) {
                 total += parseInt(prod.price); 
             }
         });
-        var saleId = "V" + Date.now();
+        // --- AJOUT : Utilisation du générateur d'ID unique ---
+        var saleId = generateUniqueId("VENTE");
         var newSale = Object.assign({}, data, { id: saleId, amount: total, date: now });
         db.sales.push(newSale);
         
-        // On ajoute 'client' pour que le client puisse retrouver sa facture
         db.invoices.push({ 
-            id: "FAC-" + Date.now(),
+            id: generateUniqueId("FAC"), // --- AJOUT : ID Unique ---
             type: 'VENTE', 
             owner: data.owner, 
-            client: data.client, // IMPORTANT
+            client: data.client, 
             amount: total, 
             details: "Achat de " + data.cart.length + " produits", 
             date: now 
@@ -104,7 +113,7 @@ app.post('/api/action', function(req, res) {
     }
 
     if (type === 'add_prod') { 
-        data.id = "P" + Date.now(); 
+        data.id = generateUniqueId("PROD"); // --- AJOUT : ID Unique ---
         db.products.push(data);
         
         // SYNCHRO SUPABASE
@@ -125,10 +134,8 @@ app.post('/api/action', function(req, res) {
         db.chat.push(Object.assign({}, data, { date: now })); 
     }
 
-    // --- AJOUTS POUR LA GESTION RH & STOCKS ---
-
     if (type === 'add_emp') { 
-        data.id = "E" + Date.now();
+        data.id = generateUniqueId("EMP"); // --- AJOUT : ID Unique ---
         data.jobs = 0; 
         db.employees.push(data); 
     }
@@ -165,7 +172,7 @@ app.post('/api/action', function(req, res) {
 
     if (type === 'assign') {
         db.deliveries.push({
-            id: "D" + Date.now(),
+            id: generateUniqueId("LIV"), // --- AJOUT : ID Unique ---
             orderId: data.orderId,
             livreur: data.livreur,
             loc: data.loc,
@@ -201,42 +208,72 @@ app.get('/', function(req, res) {
         --mvola: #00a1e4; --orange: #ff6600; --airtel: #ed1c24; 
     }
     body { 
-        background: url('Background_client.jpg') no-repeat center center fixed; 
+        background: url('/Background_client.jpg') no-repeat center center fixed; 
         background-size: cover; color: #fff; 
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
         overflow-x: hidden; min-height: 100vh;
     }
 
-    /* 2. ANIMATION SPLASH SCREEN */
+    /* 2. ANIMATION SPLASH SCREEN (MODIFIÉ POUR EFFET ÉBLOUISSANT) */
     .splash-screen { 
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-        background: radial-gradient(circle, #1a1a1a, #000);
+        background: radial-gradient(circle, #1a1a1a 0%, #000000 100%); 
         display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; 
+        overflow: hidden;
     }
-    .splash-title { 
-        color: var(--p); font-size: clamp(2rem, 8vw, 4rem); letter-spacing: 8px; margin-bottom: 30px; 
-        text-shadow: 0 0 20px rgba(212, 175, 55, 0.6); font-weight: bold;
-    }
-    .dots { display: flex; gap: 15px; }
-    .dot { width: 18px; height: 18px; background: var(--p); border-radius: 50%; box-shadow: 0 0 15px var(--p); animation: bounce 0.6s infinite alternate; }
-    .dot:nth-child(2) { animation-delay: 0.2s; } .dot:nth-child(3) { animation-delay: 0.4s; } .dot:nth-child(4) { animation-delay: 0.6s; }
-    @keyframes bounce { from { transform: translateY(0); opacity: 0.4; } to { transform: translateY(-25px); opacity: 1; } }
-        .splash-img {
-        width: 280px;           /* Largeur de ton image */
-        border-radius: 20px;    /* Bords arrondis pour le style */
-        border: 2px solid #D4AF37; /* Contour doré comme ton logo */
-        margin-bottom: 20px;
-        
-        /* Animation de zoom/respiration */
-        animation: imagePulse 2s ease-in-out infinite;
-         }
     
-        @keyframes imagePulse {
-        0% { transform: scale(0.95); opacity: 0.8; }
-        50% { transform: scale(1.05); opacity: 1; }
-        100% { transform: scale(0.95); opacity: 0.8; }
-     }
+    /* --- AJOUT : NOUVEAUX EFFETS SPLASH SCREEN --- */
+    /* --- MODIFICATION : AJOUT DE pointer-events: none --- */
+    /* Lueur rotative en arrière-plan */
+    .splash-screen::before {
+        content: ''; 
+        position: absolute; 
+        top: -50%; 
+        left: -50%; 
+        width: 200%; 
+        height: 200%;
+        /* Ton dégradé Or */
+        background: conic-gradient(transparent, rgba(212, 175, 55, 0.4), transparent 30%);
+        /* On relance l'animation ici */
+        animation: rotate-light 4s linear infinite; 
+        /* Indispensable : laisse passer les clics vers les boutons */
+        pointer-events: none; 
+        z-index: 1;
+    }
 
+    /* L'instruction de rotation (ne pas oublier ce bloc !) */
+    @keyframes rotate-light {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    
+    /* On s'assure que le container du logo est au-dessus de la lumière */
+    .splash-logo-container {
+        position: relative; 
+        z-index: 10;
+        animation: pulse-glow 1.5s infinite alternate, zoom-in 1s ease-out;
+    }
+    .splash-logo-container img {
+        max-width: 80vw; max-height: 80vh; object-fit: contain; border-radius: 20px;
+        filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.9));
+    }
+    @keyframes pulse-glow {
+        0% { filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.5)); transform: scale(0.98); }
+        100% { filter: drop-shadow(0 0 50px rgba(212, 175, 55, 1)); transform: scale(1.03); }
+    }
+    @keyframes zoom-in { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    
+    .flash-effect {
+        position: absolute; width: 100%; height: 100%; top: 0; left: 0;
+        background: rgba(255, 255, 255, 0.1); opacity: 0; z-index: 11; pointer-events: none;
+        animation: lightning 4s infinite;
+    }
+    @keyframes lightning {
+        0%, 95%, 98% { opacity: 0; }
+        96%, 99% { opacity: 0.9; background: rgba(212, 175, 55, 0.3); }
+        100% { opacity: 0; }
+    }
+    /* ------------------------------------------- */
 
     /* 3. STRUCTURE */
     .sidebar { width: 250px; background: rgba(0, 0, 0, 0.92); height: 100vh; position: fixed; left: 0; top: 0; border-right: 3px solid var(--p); padding: 20px; z-index: 100; overflow-y: auto; backdrop-filter: blur(10px); }
@@ -266,47 +303,25 @@ app.get('/', function(req, res) {
         .main { margin-left: 70px; width: calc(100% - 70px); }
         .big-btn { width: 90%; }
     }
-        /*LOGO*/
-        .logo-empire {
-            width: 100px;           /* Taille du logo */
-            height: 100px;
-            border-radius: 50%;     /* Rend le logo bien rond */
-            border: 3px solid #D4AF37; /* Cercle doré */
-            object-fit: cover;      /* Empêche l'image d'être déformée */
-            display: block;
-            margin: 15px auto;      /* Centre le logo horizontalement */
-            box-shadow: 0 0 15px rgba(212, 175, 55, 0.5); /* Effet de lumière */
-            background: #000;
-        }
-        
-        /* Logo plus petit pour la barre de navigation */
-        .logo-nav {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            border: 2px solid #D4AF37;
-            margin-right: 15px;
-            vertical-align: middle;
-        }
-
         </style>
     </head>
     <body>
         <div id="app">
             
-        <div v-if="view === 'splash'" class="splash-screen">
-        <img src="image acceuil animation.jpg" class="splash-img">
-        
-        <div class="dots">
-            <div class="dot"></div>
-            <div class="dot"></div>
-            <div class="dot"></div>
-            <div class="dot"></div>
-        </div>
-    </div>
+            <div v-if="view === 'splash'" class="splash-screen">
+                <div class="flash-effect"></div>
+                <div class="splash-logo-container">
+                    <img src="/image acceuil animation.jpg">
+                </div>
+                <div style="margin-top: 40px; color: var(--p); font-family: 'Courier New', monospace; font-weight: bold; font-size: 1.2rem; z-index: 10; text-shadow: 0 0 15px var(--p); letter-spacing: 3px;">
+                    INITIALISATION DU SYSTEME...
+                </div>
+            </div>
     
             <div v-if="view === 'role'" class="splash-screen">
-                <h2 style="color:white; margin-bottom: 30px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">SÉLECTIONNEZ VOTRE ESPACE</h2>
+                <h2 style="color:white; margin-bottom: 30px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
+                    <img src="/logo.jpg" style="height: 50px; vertical-align: middle; margin-right: 15px; border-radius: 50%; box-shadow: 0 0 10px var(--p);"> SÉLECTIONNEZ VOTRE ESPACE
+                </h2>
                 <div style="display:flex; flex-wrap:wrap; justify-content:center;">
                     <div class="big-btn" @click="selectRole('admin')"><h2>👨‍💼 PATRON</h2><p>Gestion, Stocks & Salaires</p></div>
                     <div class="big-btn" @click="selectRole('client')"><h2>🛒 CLIENT</h2><p>Acheter sur le Market</p></div>
@@ -314,10 +329,6 @@ app.get('/', function(req, res) {
             </div>
     
             <div v-if="view === 'auth'" style="height:100vh; display:flex; justify-content:center; align-items:center;">
-                <div class="card" style="text-align: center;">
-                    <img src="logo.jpg" class="logo-empire">
-                     <h2 style="color: #D4AF37;">FLASHDEAL EMPIRE</h2>
-                 </div>
                 <div class="card" style="width:380px; text-align:center; box-shadow: 0 0 20px rgba(255,69,0,0.5);">
                     <h1 style="color:var(--p); letter-spacing: 2px;">ESPACE {{ form.role === 'admin' ? 'PATRON' : 'CLIENT' }}</h1>
                     <div v-if="!isLogin && form.role === 'admin'"><input v-model="form.shop" class="input" placeholder="Nom de l'Entreprise"></div>
@@ -331,7 +342,10 @@ app.get('/', function(req, res) {
     
             <div v-if="view === 'dashboard' && session && session.role === 'admin'">
                 <div class="sidebar">
-                    <h2 style="color:var(--p); margin-bottom: 5px;">{{session.shop}}</h2>
+                    <h2 style="color:var(--p); margin-bottom: 5px;">
+                        <img src="logo.jpg" style="height: 30px; border-radius: 50%; vertical-align: middle; margin-right: 10px;">
+                        {{session.shop}}
+                    </h2>
                     <p style="font-size: 0.7rem; color: gray; margin-bottom: 20px;">ADMIN: {{session.user}}</p>
                     <button class="btn btn-p" @click="load">🔄 RAFRAÎCHIR</button>
                     <button class="btn btn-p" @click="tab='compta'">💰 COMPTABILITÉ</button>
@@ -339,10 +353,7 @@ app.get('/', function(req, res) {
                     <button class="btn btn-p" @click="tab='liv'">🛵 LIVREURS & SALAIRES</button>
                     <button class="btn btn-p" @click="tab='gps'">🛰️ SUIVI LIVRAISONS</button> <button class="btn btn-p" @click="tab='chat'">💬 TCHAT + FICHIERS</button>
                     <button class="btn" style="background:red; margin-top:30px;" @click="logout">🚪 DÉCONNEXION</button>
-                    <img src="logo.jpg" class="logo-empire" style="width: 80px; height: 80px;">
-                    <h3 style="text-align:center; color:white;">ADMIN</h3>
-                    <hr style="border: 0.5px solid #333; margin: 20px 0;">
-                 </div>
+                </div>
     
                 <div class="main">
                     <div v-if="tab==='compta'">
@@ -363,6 +374,16 @@ app.get('/', function(req, res) {
                         <div class="card">
                             <h3>AJOUTER UN PRODUIT</h3>
                             <input v-model="newP.name" class="input" placeholder="Nom du produit">
+                            
+                            <select v-model="newP.category" class="input">
+                                <option value="">-- Choisir Catégorie --</option>
+                                <option value="Électronique">Électronique</option>
+                                <option value="Mode">Mode</option>
+                                <option value="Alimentation">Alimentation</option>
+                                <option value="Services">Services</option>
+                                <option value="Autre">Autre</option>
+                            </select>
+
                             <input v-model="newP.price" type="number" class="input" placeholder="Prix de vente">
                             <input v-model="newP.stock" type="number" class="input" placeholder="Stock initial">
                             <label style="font-size:0.8rem;">IMAGE PRODUIT :</label>
@@ -370,11 +391,24 @@ app.get('/', function(req, res) {
                             <button class="btn btn-p" @click="doAction('add_prod', Object.assign({}, newP, {owner:session.user, shopName:session.shop}))">METTRE EN VENTE</button>
                         </div>
                         <h3>MON INVENTAIRE</h3>
+                        
+                        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                            <input v-model="adminSearchQuery" class="input" placeholder="🔍 Rechercher dans mon inventaire..." style="flex: 2;">
+                            <select v-model="adminSearchCategory" class="input" style="flex: 1;">
+                                <option value="">Toutes les catégories</option>
+                                <option value="Électronique">Électronique</option>
+                                <option value="Mode">Mode</option>
+                                <option value="Alimentation">Alimentation</option>
+                                <option value="Services">Services</option>
+                                <option value="Autre">Autre</option>
+                            </select>
+                        </div>
+                        
                         <div class="grid">
-                            <div v-for="p in myProducts" class="card">
+                            <div v-for="p in filteredAdminProducts" class="card">
                                 <img v-if="p.file" :src="p.file" class="img-prod">
                                 <h4>{{p.name}}</h4>
-                                <p>STOCK: <b>{{p.stock}}</b> | {{p.price}} AR</p>
+                                <p style="font-size: 0.8rem; color: var(--p);">{{p.category || 'Non classé'}}</p> <p>STOCK: <b>{{p.stock}}</b> | {{p.price}} AR</p>
                                 <div style="background:rgba(0,0,0,0.5); padding:10px; border-radius:8px; margin-bottom: 10px;">
                                     <small>ACHAT STOCK FOURNISSEUR</small>
                                     <input type="number" v-model="p.q" class="input" placeholder="Qté">
@@ -451,12 +485,12 @@ app.get('/', function(req, res) {
             </div>
     
             <div v-if="view === 'dashboard' && session && session.role === 'client'">
-            <div class="header-client" style="background: rgba(0,0,0,0.9); padding: 10px; display: flex; align-items: center;">
-                <img src="logo.jpg" class="logo-nav">
-                <h2 style="color: #D4AF37; margin: 0;">EMPIRE MARKET</h2>
-            </div>
+                
                 <div style="background:rgba(0,0,0,0.85); padding:15px; display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid var(--p); position:sticky; top:0; z-index:100; backdrop-filter: blur(10px);">
-                    <h2 style="color:var(--p); margin:0;">⚡ MARKET</h2>
+                    <h2 style="color:var(--p); margin:0;">
+                        <img src="logo.jpg" style="height: 35px; border-radius: 50%; vertical-align: middle; margin-right: 10px;">
+                        ⚡ MARKET
+                    </h2>
                     <div style="display:flex; gap: 10px;">
                         <button class="btn btn-p" style="width:auto; margin:0;" @click="tab='boutique'; load()">🛍️ BOUTIQUE</button>
                         <button class="btn btn-p" style="width:auto; margin:0;" @click="tab='my_inv'">🧾 MES FACTURES</button>
@@ -468,12 +502,24 @@ app.get('/', function(req, res) {
                 </div>
 
                 <div v-if="tab==='boutique'">
+                    <div style="padding: 20px 25px 0 25px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input v-model="searchQuery" class="input" placeholder="🔍 Rechercher un produit, un magasin..." style="flex: 2; margin: 0;">
+                        <select v-model="searchCategory" class="input" style="flex: 1; margin: 0;">
+                            <option value="">Toutes les catégories</option>
+                            <option value="Électronique">Électronique</option>
+                            <option value="Mode">Mode</option>
+                            <option value="Alimentation">Alimentation</option>
+                            <option value="Services">Services</option>
+                            <option value="Autre">Autre</option>
+                        </select>
+                    </div>
+
                     <div class="grid" style="padding:25px;">
-                        <div v-for="p in products" class="card" style="text-align:center;">
+                        <div v-for="p in filteredProducts" class="card" style="text-align:center;">
                             <img v-if="p.file" :src="p.file" class="img-prod">
                             <h3>{{p.name}}</h3>
                             <p style="color:#ccc; font-size:0.8rem;">Boutique: {{p.shopName}}</p>
-                            <h2 style="color:var(--p)">{{p.price}} AR</h2>
+                            <p style="font-size: 0.8rem; color: var(--p);">{{p.category || 'Non classé'}}</p> <h2 style="color:var(--p)">{{p.price}} AR</h2>
                             <button class="btn btn-p" :disabled="p.stock<=0" @click="cart.push(p)">{{ p.stock>0 ? 'ACHETER' : 'RUPTURE' }}</button>
                         </div>
                     </div>
@@ -494,7 +540,10 @@ app.get('/', function(req, res) {
 
                     <div id="invoice-capture" style="position: absolute; left: -9999px; width: 400px; padding: 30px; background: #ffffff; color: #000000; font-family: sans-serif;">
                         <div style="text-align: center; border-bottom: 3px solid #D4AF37; padding-bottom: 15px;">
-                            <h1 style="margin: 0; color: #000;">⚡ FLASHDEAL</h1>
+                            <h1 style="margin: 0; color: #000;">
+                                <img src="logo.jpg" style="height: 40px; vertical-align: middle; margin-right: 10px;">
+                                ⚡ FLASHDEAL
+                            </h1>
                             <p style="font-size: 14px; margin: 0; color: #555;">Reçu de paiement électronique</p>
                         </div>
                         <div style="margin-top: 20px; font-size: 16px;">
@@ -552,21 +601,26 @@ app.get('/', function(req, res) {
             new Vue({
                 el: '#app',
                 data: {
-                    view: 'splash', // Démarre toujours par l'animation
+                    view: 'splash', 
                     session: null, 
                     isLogin: true, 
                     tab: 'compta', 
                     form: {user:'', pass:'', role:'', shop:''},
                     products:[], sales:[], supply:[], chat:[], employees:[], deliveries:[], invoices:[],
-                    newP:{name:'',price:0,stock:0,file:''}, newEmp:{name:''},
+                    newP:{name:'',price:0,stock:0,file:'', category:''}, 
+                    newEmp:{name:''},
                     cart:[], showCart:false, loc:'', newMsg:'', chatFile:'', map:null, refreshInterval: null,
-                    // Objet pour stocker la facture avant de la transformer en PNG
-                    selectedInv: { id:'', date:'', client:'', amount:0, details:'', owner:'' }
+                    selectedInv: { id:'', date:'', client:'', amount:0, details:'', owner:'' },
+                    searchQuery: '', 
+                    searchCategory: '',
+                    // --- AJOUT : Variables pour la recherche Admin ---
+                    adminSearchQuery: '',
+                    adminSearchCategory: ''
                 },
                 mounted: function() {
                     var self = this;
-                    // L'animation dure 2.5 secondes puis on passe au rôle
-                    setTimeout(function() { self.view = 'role'; }, 2500);
+                    // L'animation dure 3.5 secondes pour profiter de l'effet
+                    setTimeout(function() { self.view = 'role'; }, 3500);
                 },
                 computed: {
                     myProducts: function() { var s=this; return this.products.filter(function(p){ return p.owner === s.session.user; }); },
@@ -579,6 +633,25 @@ app.get('/', function(req, res) {
                         var ca=0, dep=0;
                         this.myInvoices.forEach(function(i){ if(i.type==='VENTE') ca+=parseInt(i.amount); else dep+=parseInt(i.amount); });
                         return { ca:ca, dep:dep, net:ca-dep };
+                    },
+                    filteredProducts: function() {
+                        var s = this.searchQuery.toLowerCase();
+                        var c = this.searchCategory;
+                        return this.products.filter(function(p) {
+                            var matchName = p.name.toLowerCase().indexOf(s) !== -1 || (p.shopName && p.shopName.toLowerCase().indexOf(s) !== -1);
+                            var matchCat = c === '' || p.category === c;
+                            return matchName && matchCat;
+                        });
+                    },
+                    // --- AJOUT : Filtrage pour l'inventaire Admin ---
+                    filteredAdminProducts: function() {
+                        var s = this.adminSearchQuery.toLowerCase();
+                        var c = this.adminSearchCategory;
+                        return this.myProducts.filter(function(p) {
+                            var matchName = p.name.toLowerCase().indexOf(s) !== -1;
+                            var matchCat = c === '' || p.category === c;
+                            return matchName && matchCat;
+                        });
                     }
                 },
                 methods: {
@@ -602,7 +675,6 @@ app.get('/', function(req, res) {
                             if(res.success){ 
                                 self.session = res.user; 
                                 self.view = 'dashboard';
-                                // Si c'est un client, on ouvre directement l'onglet boutique
                                 self.tab = res.user.role === 'admin' ? 'compta' : 'boutique';
                                 self.load(); 
                                 self.refreshInterval = setInterval(self.load.bind(self), 5000); 
@@ -627,10 +699,9 @@ app.get('/', function(req, res) {
                         this.doAction('sale', { client:this.session.user, loc:this.loc, cart:this.cart, method:m, owner:this.cart[0].owner });
                         this.cart=[]; this.showCart=false;
                         alert("✅ Commande envoyée avec succès !");
-                        this.tab = 'my_inv'; // Redirige le client vers ses factures après l'achat
+                        this.tab = 'my_inv'; 
                     },
 
-                    // NOUVEAU : Fonction pour trouver le livreur d'une vente
                     getLivreur: function(id) {
                         var d = this.deliveries.find(function(x){ return x.orderId === id; });
                         return d ? d.livreur : '';
@@ -641,10 +712,9 @@ app.get('/', function(req, res) {
                     },
                     isAssigned: function(id) { return this.deliveries.some(function(d){ return d.orderId===id; }); },
 
-                    // NOUVEAU : Transformation de la facture en image PNG
                     downloadPNG: function(inv) {
                         var self = this;
-                        this.selectedInv = inv; // Remplir le modèle caché
+                        this.selectedInv = inv; 
                         setTimeout(function() {
                             var target = document.querySelector("#invoice-capture");
                             if(!target) return alert("Erreur avec le modèle de facture.");
@@ -670,7 +740,7 @@ app.get('/', function(req, res) {
                             role: 'client', 
                             text: this.newMsg, 
                             file: this.chatFile,
-                            owner: 'admin' // Par défaut on envoie à l'admin global
+                            owner: 'admin' 
                         });
                         this.newMsg = ''; this.chatFile = '';
                         var f = document.getElementById('chatFileClient'); if(f) f.value='';
@@ -684,7 +754,7 @@ app.get('/', function(req, res) {
 });
     
 // --- 7. DÉMARRAGE DU SERVEUR ---
-const PORT = process.env.PORT || 3000;
+var PORT = 3000;
 app.listen(PORT, function() {
     console.log("------------------------------------------");
     console.log("🚀 EMPIRE DASHBOARD READY");

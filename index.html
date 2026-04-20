@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <meta charset="UTF-8" />
+    <title>⚡ FLASHDEAL EMPIRE</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.5.17/dist/vue.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    
+    <div id="app">      
+      <div v-if="view === 'splash'" class="splash-screen">
+        <div class="splash-core">
+            <h1 class="splash-text-anim">FLASHDEAL</h1>
+            <div class="splash-text pulse-fast">INITIALISATION DE L'EMPIRE...</div>
+            <div class="cyber-loader"></div>
+        </div>
+      </div>
+
+      <div v-if="view === 'role'" class="splash-screen animated-fade-in">
+        <div class="role-container animated-zoom-in">
+          <h2 class="role-title glowing-text">
+            <img src="/logo.jpg" class="role-logo" onerror="this.style.display='none'"/>SÉLECTIONNEZ VOTRE ESPACE
+          </h2>
+          <div class="role-buttons">
+            <div class="big-btn hover-glow" @click="selectRole('admin')">
+              <h2>👨‍💼 ADMIN</h2>
+              <p>Gestion, Stocks & Salaires</p>
+            </div>
+            <div class="big-btn hover-glow" @click="selectRole('client')">
+              <h2>🛒 CLIENT</h2>
+              <p>Acheter sur le Market</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="view === 'auth'" class="auth-page animated-slide-up">
+        <div class="card auth-card glow-border">
+          <h1 class="auth-title">ESPACE {{ form.role === 'admin' ? 'PATRON' : 'CLIENT' }}</h1>
+          <div v-if="!isLogin && form.role === 'admin'" class="animated-fade-in">
+            <input v-model="form.shop" class="input" placeholder="Nom de l'Entreprise"/>
+          </div>
+          <input v-model="form.user" class="input" placeholder="Identifiant"/>
+          <input v-model="form.pass" type="password" class="input" placeholder="Mot de passe"/>
+          <button class="btn btn-p fancy-click" @click="authAction">
+            {{ isLogin ? 'SE CONNECTER' : 'CRÉER MON COMPTE' }}
+          </button>
+          <p class="toggle-auth" @click="isLogin=!isLogin">
+            {{ isLogin ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter" }}
+          </p>
+          <button class="btn back-btn" @click="view='role'">⬅️ RETOUR AU CHOIX</button>
+        </div>
+      </div>
+
+      <div v-if="view === 'subscription'" class="subscription-page animated-zoom-in">
+        <div class="card subscription-card glow-gold">
+          <h1 class="title-premium">🌟 PASSEZ PREMIUM</h1>
+          <p class="subtitle-premium">Débloquez toutes les fonctionnalités FlashDeal.</p>
+          <div class="premium-box">
+            <input type="number" v-model="subAmount" class="input" placeholder="Montant de l'abonnement (ex: 10000)"/>
+            <p v-if="session && session.role === 'admin'" class="premium-features">
+              ✅ Chat direct clients<br />✅ Suivi GPS en temps réel<br/>✅ Analyse IA (Nouveau)
+            </p>
+            <p v-if="session && session.role === 'client'" class="premium-features">
+              ✅ SAV direct Boutique<br />✅ Livraison Rapide / Ultra
+            </p>
+          </div>
+          <button class="btn btn-p fancy-click" @click="subscribe">💳 S'ABONNER MAINTENANT</button>
+          <button class="btn cancel-btn" @click="goToDashboard">NON MERCI, PASSER</button>
+        </div>
+      </div>
+
+      <div v-if="view === 'dashboard' && session && session.role === 'admin'" class="dashboard-wrapper">
+        <button class="sidebar-toggle" @click="showSidebar = !showSidebar">
+          <span v-if="!showSidebar">☰</span><span v-else>✕</span>
+        </button>
+
+        <div v-if="showSidebar" class="sidebar-overlay" @click="showSidebar = false"></div>
+
+        <div class="sidebar" :class="{ 'sidebar-open': showSidebar }">
+          <h2 class="shop-name glowing-text">{{session.shop}}</h2>
+          <p class="admin-user">ADMIN: {{session.user}}</p>
+          <div class="premium-status">
+            <span v-if="session.isPremium" class="badge-premium pulse-gold">🌟 PREMIUM</span>
+            <span v-else class="badge-free">⚪ GRATUIT</span>
+          </div>
+          <div class="card gold ai-mini-card">
+            <h3>🤖 RAPPPORT IA</h3>
+            <p>{{ businessIntelligence }}</p>
+          </div>
+          <div class="sidebar-buttons">
+              <button class="btn btn-p fancy-click" @click="tab='compta'">💰 COMPTA</button>
+              <button class="btn btn-p fancy-click" @click="tab='inv'">📦 STOCKS</button>
+              <button class="btn btn-p fancy-click" @click="tab='liv'">🛵 LIVREURS</button>
+              <button class="btn btn-p fancy-click" @click="tab ='suppliers'">🤝 FOURNISSEURS</button>
+              <button class="btn btn-p fancy-click" @click="tab='gps'">🛰️ RADAR GPS</button>
+              <button class="btn btn-p fancy-click" @click="tab='ai_manager'">📊 ANALYSE</button>
+              <button class="btn btn-p fancy-click" @click="tab='chat'">💬 TCHAT</button>
+              <button v-if="session && !session.isPremium" class="btn btn-warning pulse-fast" @click="view='subscription'">
+                ⭐ S'ABONNER
+              </button>
+              <button class="btn btn-danger fancy-click" @click="logout">🚪 QUITTER</button>
+          </div>
+        </div>
+
+        <div class="main">
+          <div v-if="tab==='compta'" class="compta-container animated-tab">
+            <div class="kpi-grid">
+              <div class="kpi-card green hover-lift">
+                <h4>Total Ventes</h4>
+                <h2>{{calc.ca}} AR</h2>
+              </div>
+              <div class="kpi-card red hover-lift">
+                <h4>Total Dépenses</h4>
+                <h2>{{calc.dep}} AR</h2>
+              </div>
+              <div class="kpi-card blue hover-lift">
+                <h4>Bénéfice Net</h4>
+                <h2>{{calc.net}} AR</h2>
+              </div>
+              <div class="kpi-card gold hover-lift">
+                <h4>Marge</h4>
+                <h2>{{ calc.ca > 0 ? (calc.net / calc.ca * 100).toFixed(1) : 0}}%</h2>
+              </div>
+            </div>
+            <div class="chart-grid">
+              <div class="card chart-box hover-glow" style="position: relative; height: 300px; width: 100%">
+                <h3>📈 Évolution des ventes</h3>
+                <canvas id="chart-sales"></canvas>
+              </div>
+              <div class="card chart-box hover-glow" style="position: relative; height: 300px; width: 100%">
+                <h3>📉 Dépenses</h3>
+                <canvas id="chart-expenses"></canvas>
+              </div>
+              <div class="card chart-box hover-glow" style="position: relative; height: 300px; width: 100%">
+                <h3>📊 Profit global</h3>
+                <canvas id="chart-profit"></canvas>
+              </div>
+            </div>
+            <div class="card glow-border">
+              <h3>🧾 Historique des ventes & achats</h3>
+              <div class="journal">
+                <div v-for="i in myInvoices" class="journal-row animated-list-item">
+                  <span class="badge" :class="i.type">{{i.type}}</span>
+                  <span>{{i.date}}</span>
+                  <span>{{i.amount}} AR</span>
+                  <span><strong>{{i.details}}</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="tab==='inv'" class="animated-tab">
+            <div class="card glow-border">
+              <h3>AJOUTER UN PRODUIT</h3>
+              <input v-model="newP.name" class="input" placeholder="Nom du produit"/>
+              <select v-model="newP.category" class="input">
+                <option value="">-- Choisir Catégorie --</option>
+                <option value="Électronique">Électronique</option>
+                <option value="Mode">Mode</option>
+                <option value="Alimentation">Alimentation</option>
+                <option value="Autre">Autre</option>
+              </select>
+              <input v-model="newP.price" type="number" class="input" placeholder="Prix de vente"/>
+              <input v-model="newP.stock" type="number" class="input" placeholder="Stock initial"/>
+              <input type="file" @change="handleFile($event, 'prod')" class="input"/>
+              <button class="btn btn-p fancy-click"
+                @click="doAction('add_prod', Object.assign({}, newP, {owner:session.user, shopName:session.shop}))">
+                METTRE EN VENTE
+              </button>
+            </div>
+            <div class="grid">
+              <div v-for="p in filteredAdminProducts" class="card product-card hover-lift animated-list-item">
+                <img v-if="p.file" :src="p.file" class="img-prod" />
+                <h4>{{p.name}}</h4>
+                <p class="category">{{p.category || 'Non classé'}}</p>
+                <p>STOCK: <b :class="{'stock-out': isOutOfStock(p.stock), 'stock-low': isStockLow(p.stock)}">{{p.stock}}</b> | {{p.price}} AR</p>
+                <div class="stock-box">
+                  <small>ACHAT STOCK FOURNISSEUR</small>
+                  <input type="number" v-model="localInputs['q_'+p.id]" class="input" placeholder="Qté"/>
+                  <button class="btn btn-p btn-small fancy-click" @click="buyStock(p)">VALIDER ACHAT</button>
+                </div>
+                <button class="btn btn-danger fancy-click" @click="doAction('del_prod', p)">🗑️ SUPPRIMER</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="tab==='liv'" class="animated-tab">
+            <div class="card glow-border">
+              <h3>RECRUTER UN LIVREUR</h3>
+              <input v-model="newEmp.name" class="input" placeholder="Nom du livreur"/>
+              <button class="btn btn-p fancy-click"
+                @click="doAction('add_emp', Object.assign({}, newEmp, {owner:session.user}))">
+                RECRUTER
+              </button>
+            </div>
+            <h3>COMMANDES À ASSIGNER</h3>
+            <div v-for="s in mySales" class="card animated-list-item hover-lift" v-if="!isAssigned(s.id)">
+              <span class="badge badge-primary">VENTE #{{s.id.slice(-4)}}</span>
+              <b>LIEU: {{s.loc}}</b><br />
+              Assigner à :
+              <select :id="'sel_'+s.id" class="input select-inline">
+                <option v-for="e in myEmployees" :value="e.name">{{e.name}}</option>
+              </select>
+              <button class="btn btn-p btn-inline fancy-click" @click="assignTask(s)">VALIDER MISSION</button>
+            </div>
+            <hr class="divider" />
+            <h3>PAYER LES SALAIRES</h3>
+            <div class="grid">
+              <div v-for="e in myEmployees" class="card hover-lift animated-list-item">
+                <b>{{e.name}}</b><br />Missions faites: {{e.jobs}}<br />
+                <input type="number" v-model="localInputs['pay_'+e.name]" class="input" placeholder="Montant AR"/>
+                <button class="btn btn-o fancy-click" @click="paySal(e)">PAYER SALAIRE</button>
+                <button class="btn btn-danger fancy-click" @click="doAction('del_emp', e)">Virer</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="tab === 'suppliers'" class="animated-tab">
+            <div class="card glow-border">
+              <h3>🤝 GESTION DES FOURNISSEURS</h3>
+              <div class="supplier-form">
+                <input v-model="newSupplier.name" placeholder="Nom du fournisseur">
+                <input v-model="newSupplier.contact" placeholder="Contact (Tél/Email)">
+                <button class="btn btn-p fancy-click" @click="addSupplier">Ajouter</button>
+              </div>
+            </div>
+            <div class="grid">
+                 <div v-for="sup in suppliers" class="card supplier-item hover-lift animated-list-item">
+                     <h4>{{ sup.name }}</h4>
+                     <p>{{ sup.contact }}</p>
+                 </div>
+            </div>
+          </div>
+
+          <div v-if="tab==='ai_manager'" class="animated-tab" style="position: relative;">
+            <div v-if="session && !session.isPremium" class="premium-overlay">
+              <h2 class="pulse-gold">🔒 ACCÈS PREMIUM REQUIS</h2>
+              <button class="btn btn-p btn-subscribe fancy-click" @click="view='subscription'">S'ABONNER</button>
+            </div>
+            <div class="card glow-gold" :class="{ blur: session && !session.isPremium }">
+                <h3 class="gps-title-main glowing-text" style="font-size:2rem;">📊  ANALYSE IA</h3>
+                <p>L'intelligence artificielle analyse le marché et optimise vos finances en temps réel.</p>
+                <div class="card ai-screen">
+                    <p v-html="aiStockPrediction" style="font-size: 1.1rem; line-height: 1.6;"></p>
+                </div>
+                <button class="btn btn-p pulse-fast fancy-click" style="font-size:1.2rem; padding:15px;" @click="runAIOptimization()">
+                    ⚡ DÉCLENCHER L'INTERVENTION  ⚡
+                </button>
+            </div>
+          </div>
+
+          <div v-if="tab==='gps'" class="animated-tab" style="position: relative">
+            <div v-if="session && !session.isPremium" class="premium-overlay">
+              <h2 class="pulse-gold">🔒 ACCÈS PREMIUM REQUIS</h2>
+              <button class="btn btn-p btn-subscribe fancy-click" @click="view='subscription'">S'ABONNER</button>
+            </div>
+            <div class="card gps-card glow-border" :class="{ blur: session && !session.isPremium }">
+              <div class="gps-header">
+                <h3 class="gps-title-main glowing-text">🛰️ SUIVI DE LIVRAISON SATELLITE</h3>
+                <p class="gps-desc">Départ officiel : <b>ISPM ANTSOBOLO</b></p>
+              </div>
+
+              <div id="real-map" class="map-container"></div>
+
+              <div class="gps-legend">
+                  <span class="legend-item legend-standard">🚚 Standard ~20 km/h</span>
+                  <span class="legend-item legend-rapide">⚡ Rapide ~30 km/h</span>
+                  <span class="legend-item legend-ultra">🚀 Ultra ~45 km/h</span>
+              </div>
+              
+              <div class="simulation-container">
+                <div v-if="mySimData.filter(d => d.status === 'EN_COURS').length === 0" style="text-align:center; padding: 30px; color: #888;">
+                  <p style="font-size:3rem;" class="floating-anim">😴</p>
+                  <p>Le radar est vide. Aucune livraison en cours pour <b>{{session.shop}}</b>.</p>
+                </div>
+                <div v-for="d in mySimData" :key="d.id" class="gps-delivery-card animated-slide-in">    
+                  <div class="gps-delivery-header">
+                    <h2 class="gps-dest">📦 DEST : {{d.loc.toUpperCase()}}</h2>
+                    <span v-if="d.status === 'LIVRÉ'" class="badge badge-delivered" style="animation: pulse-livre 2s infinite;">✅ LIVRÉ {{d.etaStr}}</span>
+                    <span v-else class="badge badge-progress pulse-fast">🛵 EN COURS</span>
+                  </div>
+                  <div class="gps-time-row">
+                    <div class="gps-time-block">
+                      <p class="gps-time-label">DÉPART (ISPM)</p>
+                      <b class="gps-time-value gps-time-gold">🕒 {{d.startStr}}</b>
+                    </div>
+                    <div class="gps-time-separator">→</div>
+                    <div class="gps-time-block gps-time-right">
+                      <p class="gps-time-label">ARRIVÉE ESTIMÉE</p>
+                      <b class="gps-time-value gps-time-green">🏁 {{d.etaStr}}</b>
+                    </div>
+                  </div>
+                  <div class="gps-info-row">
+                    <span>👤 <b>{{d.livreur}}</b></span>
+                    <span>📏 Distance : <b>{{(d.totalDist || 0).toFixed(2)}} km</b></span>
+                  </div>
+                  <div class="gps-progress-track glow-track">
+                    <div class="gps-progress-fill fancy-progress" :style="{
+                                      width: d.progress + '%',
+                                      background: d.status === 'LIVRÉ'
+                                        ? 'linear-gradient(90deg, #1b5e20, #4CAF50)'
+                                        : 'linear-gradient(90deg, #AA771C, #CFB53B, #fff)'
+                                    }">
+                      <span v-if="d.status !== 'LIVRÉ'" class="gps-moto-icon floating-anim">🚀</span>
+                    </div>
+                    <span class="gps-progress-label">
+                      <span v-if="d.status === 'EN_COURS'">Il reste {{ (d.distRestante || 0).toFixed(2) }} km</span>
+                      <span v-else>✅ COLIS ARRIVÉ À DESTINATION</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="tab==='chat'" class="tab-container animated-tab">
+            <div v-if="session && !session.isPremium" class="premium-overlay">
+              <h2 class="pulse-gold">🔒 ACCÈS PREMIUM REQUIS</h2>
+              <button class="btn btn-p btn-subscribe fancy-click" @click="view='subscription'">S'ABONNER</button>
+            </div>
+            <div :class="{ blur: session && ! session.isPremium }">
+              <h3 class="chat-title glowing-text">DESTINATAIRE DU MESSAGE</h3>
+              <select v-model="chatDest" class="input chat-select">
+                <option value="">-- Sélectionnez un Client --</option>
+                <option v-for="c in users.filter(u => u.role === 'client')" :value="c.user">Client : {{c.user}}</option>
+                <option value="ALL">📣 ANNONCE GLOBALE (Tous)</option>
+              </select>
+
+              <div class="card chat-box glow-border">
+                <div v-for="m in myChat"
+                  :class="['chat-line animated-fade-in', (m.sender===session.user || m.sender==='GÉRANT') ? 'right' : 'left']">
+                  <div :class="['chat-bubble shadow-pop', (m.sender===session.user || m.sender==='GÉRANT') ? 'me' : 'other']">
+                    <b class="chat-sender">{{m.sender}} :</b>
+                    <span class="chat-text">{{m.text}}</span>
+                    <img v-if="m.file" :src="m.file" class="chat-image" />
+                  </div>
+                </div>
+              </div>
+              <div class="card">
+                <input v-model="newMsg" class="input" placeholder="Écrire votre message..." @keyup.enter="sendChat"/>
+                <input type="file" @change="handleFile($event, 'chat')" class="input" id="chatFile"/>
+                <button class="btn btn-p fancy-click" @click="sendChat">ENVOYER</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="view === 'dashboard' && session && session.role === 'client'" class="dashboard-wrapper">
+        <div class="client-header animated-slide-down">
+          <h2 class="client-title glowing-text">
+            ⚡ MARKET
+            <span v-if="session.isPremium" class="client-pro pulse-gold">🌟 PRO</span>
+          </h2>
+          <div class="client-actions">
+            <button class="btn btn-p btn-auto fancy-click" @click="tab='boutique'; load()">🛍️ SHOP</button>
+            <button class="btn btn-p btn-auto fancy-click" @click="tab='wishlist'">❤️ FAVORIS ({{ wishlist.length }})</button>
+            <button class="btn btn-p btn-auto fancy-click" @click="tab='my_inv'">🧾 FACTURES</button>
+            <button class="btn btn-p btn-auto fancy-click" @click="tab='my_chat'">💬 MESSAGE</button>
+            <button v-if="session && !session.isPremium" class="btn btn-o btn-auto pulse-fast" @click="view='subscription'">
+              ⭐ PREMIUM
+            </button>
+            <button class="btn btn-p btn-auto fancy-click" @click="showCart=true">🛒 PANIER ({{cart.length}})</button>
+            <button class="btn btn-danger btn-auto fancy-click" @click="logout">🚪</button>
+          </div>
+        </div>
+
+        <div class="card search-bar animated-fade-in" v-if="tab==='boutique' || tab==='wishlist'">
+          <input type="text" v-model="searchQuery" placeholder="Rechercher un produit..." @input="addSearchHistory(searchQuery)">
+          <div v-if="searchHistory.length > 0" class="search-history">
+              <small>Dernières recherches : </small>
+              <span v-for="h in searchHistory" class="badge hover-lift" @click="searchQuery = h">{{ h }}</span>
+          </div>
+        </div>
+
+        <div v-if="tab==='boutique'" class="animated-tab">
+          <div class="grid grid-products">
+            <div v-for="p in filteredProducts" class="card product-card hover-lift animated-list-item">
+              <img v-if="p.file" :src="p.file" class="img-prod" />
+              <h3>{{p.name}}</h3>
+              <p class="product-shop">Boutique: {{p.shopName}}</p>
+              <p class="product-category">{{p.category || 'Non classé'}}</p>
+              <h2 class="product-price">{{p.price}} AR</h2>
+              <button class="btn btn-p fancy-click" :disabled="p.stock<=0" @click="cart.push(p)">
+                {{ p.stock>0 ? 'ACHETER' : 'RUPTURE' }}
+              </button>
+              <button class="btn-icon fancy-click" @click="toggleWishlist(p)">
+                {{ wishlist.some(fav => fav.id === p.id) ? '❤️ Retirer' : '🤍 Favoris' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="tab==='wishlist'" class="animated-tab">
+          <h2 class="title-gold glowing-text" style="margin-bottom:20px;">❤️ MES FAVORIS</h2>
+          <div v-if="wishlist.length === 0" style="text-align:center; padding: 50px;">
+             <p style="font-size:3rem; margin-bottom:10px;">💔</p>
+             <p>Vous n'avez aucun favori pour le moment.</p>
+          </div>
+          <div class="grid grid-products" v-else>
+            <div v-for="p in wishlist" class="card product-card hover-lift animated-list-item">
+              <img v-if="p.file" :src="p.file" class="img-prod" />
+              <h3>{{p.name}}</h3>
+              <p class="product-shop">Boutique: {{p.shopName}}</p>
+              <h2 class="product-price">{{p.price}} AR</h2>
+              <button class="btn btn-p fancy-click" :disabled="p.stock<=0" @click="cart.push(p)">ACHETER</button>
+              <button class="btn btn-danger fancy-click" @click="toggleWishlist(p)">Retirer</button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="tab==='my_inv'" class="invoice-container animated-tab">
+          <h2 class="invoice-title glowing-text">📑 MES FACTURES</h2>
+          <div v-for="i in invoices.filter(inv => inv.client === session.user)" class="card invoice-card hover-lift animated-list-item">
+            <span><b>Numéro:</b> {{i.id}}</span> |
+            <span class="badge badge-paid">PAYÉ</span>
+            <hr class="divider" />
+            <p>Date: {{i.date}}</p>
+            <p style="font-size:1.1rem; color:#CFB53B;"><strong>Produits achetés : {{ i.details }}</strong></p>
+            <p>Montant: <b class="invoice-price">{{i.amount}} AR</b></p>
+            <button class="btn btn-p btn-small fancy-click" @click="downloadPNG(i)">📸 TÉLÉCHARGER PNG</button>
+          </div>
+
+          <div id="invoice-capture" class="invoice-capture">
+            <div class="invoice-header">
+              <h1 style="color:#CFB53B;">⚡ FLASHDEAL</h1>
+              <p>Reçu de paiement électronique</p>
+            </div>
+            <div class="invoice-info">
+              <p><b>Numéro :</b> {{selectedInv.id}}</p>
+              <p><b>Date :</b> {{selectedInv.date}}</p>
+              <p><b>Client :</b> {{selectedInv.client}}</p>
+            </div>
+            <div class="invoice-details">
+              <p style="font-size: 1.2rem;"><b>Achats :</b> {{selectedInv.details}}</p>
+            </div>
+            <div class="invoice-total">
+              <h2>TOTAL : {{selectedInv.amount}} AR</h2>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="tab==='my_chat'" class="chat-section animated-tab">
+          <div v-if="session && !session.isPremium" class="premium-overlay">
+            <h2 class="pulse-gold">🔒 SAV PREMIUM REQUIS</h2>
+            <button class="btn btn-p btn-subscribe fancy-click" @click="view='subscription'">S'ABONNER</button>
+          </div>
+          <div :class="{ 'blur': session && !session.isPremium }">
+            <h3 class="title-gold glowing-text">CONTACTER UNE BOUTIQUE</h3>
+            <select v-model="chatDest" class="input select-premium">
+              <option value="">-- Sélectionnez une Boutique --</option>
+              <option v-for="a in users.filter(u => u.role === 'admin')" :value="a.user">Boutique : {{a.shop}}</option>
+            </select>
+
+            <div class="card chat-container glow-border">
+              <div v-for="m in myChat" :class="m.sender === session.user ? 'chat-right' : 'chat-left'" class="animated-fade-in">
+                <div :class="[ 'chat-bubble shadow-pop', (m.sender === session.user || m.sender === 'GÉRANT') ? 'chat-me' : 'chat-other' ]">
+                  <b :class="{ 'text-manager' : m.sender === 'GÉRANT', 'text-white' : m.sender === session.user, 'text-black' : m.sender !== session.user && m.sender !== 'GÉRANT' }">{{m.sender}} :</b>
+                  <span :class="{ 'text-white': m.sender === session.user || m.sender !== 'GÉRANT', 'text-black': m.sender !== session.user && m.sender !== 'GÉRANT' }">{{m.text}}</span>
+                  <img v-if="m.file" :src="m.file" class="chat-image"/>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <input v-model="newMsg" class="input" placeholder="Votre message..." @keyup.enter="sendChatClient"/>
+              <input type="file" @change="handleFile($event, 'chat')" class="input" id="chatFileClient"/>
+              <button class="btn btn-p fancy-click" @click="sendChatClient">ENVOYER</button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="showCart" class="cart-container animated-slide-left">
+          <h2 class="title-gold glowing-text">MA COMMANDE</h2>
+          <div v-for="(c,i) in cart" class="card cart-item animated-list-item">
+            {{c.name}} | {{c.price}} AR
+            <button @click="cart.splice(i,1)" class="btn-remove">X</button>
+          </div>
+          <h3 class="cart-total">TOTAL: {{cTotal}} AR</h3>
+          <input v-model="loc" class="input" placeholder="Lieu de livraison (ex: Itaosy, Analakely...)"/>
+
+          <p class="delivery-title">🚀 VITESSE DE LIVRAISON :</p>
+          <select v-model="deliverySpeed" class="input select-dark">
+            <option value="standard">🚚 Standard (Gratuit)</option>
+            <option value="rapide" :disabled="session && !session.isPremium">⚡ Rapide (+2000 AR) 🔒Premium</option>
+            <option value="ultra" :disabled="session && !session.isPremium">🚀 Ultra (+5000 AR) 🔒Premium</option>
+          </select>
+
+          <p class="payment-title">💳 CHOISIR PAIEMENT :</p>
+          <button class="btn btn-m fancy-click" @click="checkout('MVOLA')">MVOLA</button>
+          <button class="btn btn-o fancy-click" @click="checkout('ORANGE')">ORANGE</button>
+          <button class="btn btn-a fancy-click" @click="checkout('AIRTEL')">AIRTEL</button>
+          <button class="btn btn-close fancy-click" @click="showCart=false">FERMER LE PANIER</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
